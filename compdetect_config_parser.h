@@ -15,6 +15,7 @@ struct compdetect_config
     int udp_packet_ttl;
 };
 
-struct compdetect_config *parse_json_string (const char *json_str);
+struct compdetect_config *
+parse_json_string (const char *json_str);
 
 #endif /* COMPDETECT_CONFIG_PARSER_H */

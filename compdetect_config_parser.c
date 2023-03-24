@@ -1,10 +1,14 @@
+/* Parser of the config file  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "compdetect_config_parser.h"
 
-void parse_json_entry (const char *start, const char *end, struct compdetect_config *config)
+/* Parse a JSON entry and update the config struct.  */
+void
+parse_json_entry (const char *start, const char *end, struct compdetect_config *config)
 {
     int entry_len = end - start;
     char entry[entry_len + 1];
@@ -52,7 +56,9 @@ void parse_json_entry (const char *start, const char *end, struct compdetect_con
     }
 }
 
-struct compdetect_config *parse_json_string (const char *json_str)
+/* Parse a JSON string and return the result in a config struct.  */
+struct compdetect_config *
+parse_json_string (const char *json_str)
 {
     struct compdetect_config *config = malloc (sizeof (struct compdetect_config));
     if (!config)
