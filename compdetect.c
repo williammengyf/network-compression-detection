@@ -1,4 +1,4 @@
-/* Client of the compression detection client/server application  */
+/* Compression detection standalone application  */
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -19,7 +19,7 @@
 
 #define DATAGRAM_SIZE 4096
 #define OPT_SIZE 20
-#define RECV_TIMEOUT 10
+#define RECV_TIMEOUT 5
 #define THRESHOLD 100
 
 /* Pseudo header needed for TCP header checksum calculation.  */
@@ -32,6 +32,7 @@ struct pseudo_header
 	u_int16_t tcp_size;
 };
 
+/* Arguments for thread receiving RST packets.  */
 struct thread_args
 {
   int sock_fd;
@@ -55,7 +56,7 @@ checksum (const char *buf, unsigned size)
       unsigned short word16 = *(unsigned short *) &buf[i];
       sum += word16;
     }
-  
+
   /* Handle odd-sized case.  */
   if (size & 1)
     {
@@ -78,6 +79,7 @@ checksum (const char *buf, unsigned size)
 char *
 create_syn_packet (struct sockaddr_in *src, struct sockaddr_in *dst, int *packet_size)
 {
+  /* Datagram to represent the packet.  */
   char *datagram = calloc (DATAGRAM_SIZE, sizeof (char));
   if (!datagram)
     {
@@ -85,10 +87,12 @@ create_syn_packet (struct sockaddr_in *src, struct sockaddr_in *dst, int *packet
       return NULL;
     }
 
+  /* Structs for IP and TCP header.  */
   struct iphdr *iph = (struct iphdr *) datagram;
   struct tcphdr *tcph = (struct tcphdr *) (datagram + sizeof (struct iphdr));
   struct pseudo_header psh;
 
+  /* IP header configuration.  */
   iph->ihl = 5;
   iph->version = 4;
   iph->tos = 0;
@@ -101,6 +105,7 @@ create_syn_packet (struct sockaddr_in *src, struct sockaddr_in *dst, int *packet
   iph->saddr = src->sin_addr.s_addr;
   iph->daddr = dst->sin_addr.s_addr;
 
+  /* TCP header configuration.  */
   tcph->source = src->sin_port;
   tcph->dest = dst->sin_port;
   tcph->seq = htonl (rand () % 4294967295);
@@ -116,6 +121,7 @@ create_syn_packet (struct sockaddr_in *src, struct sockaddr_in *dst, int *packet
   tcph->window = htons (5840);
   tcph->urg_ptr = 0;
 
+  /* TCP pseudo header for checksum calculaion.  */
   memset (&psh, 0, sizeof (psh));
   psh.source_address = src->sin_addr.s_addr;
   psh.dest_address = dst->sin_addr.s_addr;
@@ -131,6 +137,7 @@ create_syn_packet (struct sockaddr_in *src, struct sockaddr_in *dst, int *packet
       return NULL;
     }
 
+  /* Pseudo packet.  */
   memcpy (pseudogram, (char *) &psh, sizeof (struct pseudo_header));
   memcpy (pseudogram + sizeof (struct pseudo_header), tcph, sizeof (struct tcphdr) + OPT_SIZE);
 
@@ -177,6 +184,7 @@ read_file (const char *file_path, int *buf_size)
       return NULL;
     }
 
+  /* Set NULL terminator.  */
   buffer[file_stat.st_size] = '\0';
   *buf_size = file_stat.st_size + 1;
   fclose (file);
@@ -190,6 +198,7 @@ setup_raw_socket (void)
 {
   int sock = socket (AF_INET, SOCK_RAW, IPPROTO_TCP);
   int optval = 1;
+  struct timeval timeout;
 
   if (sock < 0)
     {
@@ -197,17 +206,18 @@ setup_raw_socket (void)
       return -1;
     }
 
+  /* Set option to manually build IP and TCP headers.  */
   if (setsockopt (sock, IPPROTO_IP, IP_HDRINCL, &optval, sizeof (optval)) < 0)
     {
-      perror ("cannot manually build IP header");
+      perror ("cannot manually build headers");
       close (sock);
       return -1;
     }
 
-  struct timeval timeout;
   timeout.tv_sec = RECV_TIMEOUT;
   timeout.tv_usec = 0;
 
+  /* Set receiving timeout.  */
   if (setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, (char *) &timeout, sizeof (timeout)) < 0)
     {
       perror ("cannot set receive timeout");
@@ -240,6 +250,7 @@ receive_rst_packet (void *args)
 
       if (bytes_received < 0)
         {
+          /* Ignore the error message for timeout.  */
           if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
               return NULL;
@@ -254,6 +265,7 @@ receive_rst_packet (void *args)
       struct iphdr *iph = (struct iphdr *) buffer;
       struct tcphdr *tcph = (struct tcphdr *) (buffer + iph->ihl * 4);
 
+      /* Check if the packet is an RST packet and matches the source and destination IP addresses and ports.  */
       if (iph->saddr == head_dst_addr->sin_addr.s_addr && iph->daddr == src_addr->sin_addr.s_addr
           && tcph->source == head_dst_addr->sin_port && tcph->dest == src_addr->sin_port && tcph->rst == 1)
         {
@@ -276,25 +288,26 @@ receive_rst_packet (void *args)
 int
 setup_udp_socket (int port, int ttl)
 {
-  int sock;
+  int sock = socket (AF_INET, SOCK_DGRAM, 0);
   int optval = 1;
+  int enable = IP_PMTUDISC_DO;
   struct sockaddr_in sin;
 
-  if ((sock = socket (AF_INET, SOCK_DGRAM, 0)) < 0)
+  if (sock < 0)
     {
       perror ("cannot create UDP socket");
       return -1;
     }
 
+  /* Set option to reuse the port.  */
   if (setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
     {
-      perror ("cannot reuse address");
+      perror ("cannot reuse port");
       close (sock);
       return -1;
     }
 
   /* Set Don't Fragment flag.  */
-  int enable = IP_PMTUDISC_DO;
   if (setsockopt (sock, IPPROTO_IP, IP_MTU_DISCOVER, &enable, sizeof (enable)) < 0)
     {
       perror ("setsockopt () failed");
@@ -302,6 +315,7 @@ setup_udp_socket (int port, int ttl)
       return -1;
     }
 
+  /* Set TTL.  */
   if (setsockopt (sock, IPPROTO_IP, IP_TTL, &ttl, sizeof (ttl)) < 0)
     {
       perror ("cannot set TTL");
@@ -329,9 +343,9 @@ setup_udp_socket (int port, int ttl)
 int
 send_udp_packet (int sock, const char *buffer, int buffer_size, struct sockaddr_in *dst_addr)
 {
-  int bytes_sent;
+  int bytes_sent = sendto (sock, buffer, buffer_size, 0, (struct sockaddr *) dst_addr, sizeof (*dst_addr));
 
-  if ((bytes_sent = sendto (sock, buffer, buffer_size, 0, (struct sockaddr *) dst_addr, sizeof (*dst_addr))) < 0)
+  if (bytes_sent < 0)
     {
       perror ("sendto () failed");
       return -1;
@@ -464,10 +478,12 @@ main(int argc, char const *argv[])
 
   double rst_time_interval[2];
 
-  for (int train = 0; train < 2; train++)
+  for (int train_index = 0; train_index < 2; train_index++)
     {
+      /* Set RST packets arrival time to zero.  */
       memset (thread_args.first_rst_time, 0, sizeof (struct timeval));
       memset (thread_args.second_rst_time, 0, sizeof (struct timeval));
+
       pthread_t receive_rst_thread;
       if (pthread_create (&receive_rst_thread, NULL, receive_rst_packet, (void *) &thread_args) != 0)
         {
@@ -483,6 +499,7 @@ main(int argc, char const *argv[])
           exit (EXIT_FAILURE);
         }
 
+      /* Send head SYN packet.  */
       int bytes_sent = sendto (raw_sock, head_syn_packet, head_syn_size, 0, (struct sockaddr *) &head_dst_addr, sizeof (struct sockaddr));
       if (bytes_sent < 0)
         {
@@ -498,7 +515,8 @@ main(int argc, char const *argv[])
           exit (EXIT_FAILURE);
         }
 
-      if (train == 1)
+      /* Copy random bytes into the payload in the second train.  */
+      if (train_index == 1)
         {
           memcpy (udp_buf + sizeof (uint16_t), random_buf, config->udp_payload_size - sizeof (uint16_t));
         }
@@ -524,6 +542,7 @@ main(int argc, char const *argv[])
             }
         }
 
+      /* Send tail SYN packet.  */
       bytes_sent = sendto (raw_sock, tail_syn_packet, tail_syn_size, 0, (struct sockaddr *) &tail_dst_addr, sizeof (struct sockaddr));
       if (bytes_sent < 0)
         {
@@ -539,14 +558,15 @@ main(int argc, char const *argv[])
           exit (EXIT_FAILURE);
         }
 
-      if (train == 0)
+      if (train_index == 0)
         {
           sleep (config->inter_measurement_time);
         }
 
       pthread_join (receive_rst_thread, NULL);
-      
-      if (!thread_args.first_rst_time->tv_sec || !thread_args.second_rst_time->tv_sec)
+
+      /* If one of the packets arrival time is not recorded, a packet is not received within the timeout.  */
+      if (thread_args.first_rst_time->tv_sec == 0 || thread_args.second_rst_time->tv_sec == 0)
         {
           printf ("Failed to detect due to insufficient information.\n");
           close (raw_sock);
@@ -559,8 +579,8 @@ main(int argc, char const *argv[])
           free (thread_args.second_rst_time);
           exit (EXIT_FAILURE);
         }
-      
-      rst_time_interval[train] = ((thread_args.second_rst_time->tv_sec - thread_args.first_rst_time->tv_sec) * 1000.0
+
+      rst_time_interval[train_index] = ((thread_args.second_rst_time->tv_sec - thread_args.first_rst_time->tv_sec) * 1000.0
                                   + (thread_args.second_rst_time->tv_usec - thread_args.first_rst_time->tv_usec) / 1000.0);
     }
 

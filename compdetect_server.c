@@ -19,19 +19,20 @@
 int
 setup_tcp_socket (int port)
 {
-  int sock;
+  int sock = socket (AF_INET, SOCK_STREAM, 0);
   int optval = 1;
   struct sockaddr_in sin;
 
-  if ((sock = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+  if (sock < 0)
     {
       perror ("cannot create TCP socket");
       return -1;
     }
 
+  /* Set option to reuse the port.  */
   if (setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
     {
-      perror ("cannot reuse address");
+      perror ("cannot reuse port");
       close (sock);
       return -1;
     }
@@ -103,7 +104,7 @@ receive_tcp_packet (int sock, char *buffer, int buffer_size)
     {
       return EOF;
     }
-      
+
   return bytes_received;
 }
 
@@ -111,19 +112,21 @@ receive_tcp_packet (int sock, char *buffer, int buffer_size)
 int
 setup_udp_socket (int port)
 {
-  int sock;
+  int sock = socket (AF_INET, SOCK_DGRAM, 0);
   int optval = 1;
   struct sockaddr_in sin;
+  struct timeval timeout;
 
-  if ((sock = socket (AF_INET, SOCK_DGRAM, 0)) < 0)
+  if (sock < 0)
     {
       perror ("cannot create UDP socket");
       return -1;
     }
 
+  /* Set option to reuse the port.  */
   if (setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
     {
-      perror ("cannot reuse address");
+      perror ("cannot reuse port");
       close (sock);
       return -1;
     }
@@ -140,10 +143,10 @@ setup_udp_socket (int port)
       return -1;
     }
 
-  struct timeval timeout;
   timeout.tv_sec = RECV_TIMEOUT;
   timeout.tv_usec = 0;
 
+  /* Set receiving timeout.  */
   if (setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, (char *) &timeout, sizeof (timeout)) < 0)
     {
       perror ("cannot set receive timeout");
@@ -161,6 +164,7 @@ receive_udp_packet (int sock, char *buffer, int buffer_size, struct sockaddr_in 
   socklen_t addr_size = sizeof (*src_addr);
   int bytes_received = recvfrom (sock, buffer, buffer_size, 0, (struct sockaddr *) src_addr, &addr_size);
 
+  /* Ignore the error message for timeout.  */
   if (bytes_received < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
     {
       perror ("recvfrom () failed");
@@ -178,7 +182,7 @@ main (int argc, char const *argv[])
 {
   if (argc < 2)
     {
-      printf ("Usage: %s <server_tcp_port_number>\n", argv[0]);
+      printf ("Usage: %s <tcp_dest_port>\n", argv[0]);
       exit (EXIT_FAILURE);
     }
 
@@ -241,7 +245,7 @@ main (int argc, char const *argv[])
       free (config);
       exit (EXIT_FAILURE);
     }
-  
+
   char *udp_buf = malloc (config->udp_payload_size);
   if (!udp_buf)
     {
@@ -256,6 +260,7 @@ main (int argc, char const *argv[])
   struct timeval first_packet_time[2], last_packet_time[2];
   struct timeval now;
 
+  /* Set packets arrival time to zero.  */
   memset(first_packet_time, 0, sizeof(first_packet_time));
   memset(last_packet_time, 0, sizeof(last_packet_time));
   memset(&now, 0, sizeof(now));
@@ -283,6 +288,7 @@ main (int argc, char const *argv[])
         }
       else if (errno == EAGAIN || errno == EWOULDBLOCK)
         {
+          /* The first packet train is received, start receiving the next.  */
           if (first_packet_time[train_index].tv_sec)
             {
               train_index++;
@@ -302,9 +308,6 @@ main (int argc, char const *argv[])
                                   + (last_packet_time[0].tv_usec - first_packet_time[0].tv_usec) / 1000.0);
   double second_train_duration = ((last_packet_time[1].tv_sec - first_packet_time[1].tv_sec) * 1000.0
                                   + (last_packet_time[1].tv_usec - first_packet_time[1].tv_usec) / 1000.0);
-
-  // printf ("arrival time between the first and last packets of the first train: %.3lf ms\n", first_train_duration);
-  // printf ("arrival time between the first and last packets of the second train: %.3lf ms\n", second_train_duration);
 
   /* Accept another TCP connection.  */
   int post_probing_client_sock = accept_tcp_connection (tcp_sock);
@@ -338,6 +341,6 @@ main (int argc, char const *argv[])
   close (tcp_sock);
   close (post_probing_client_sock);
   free (config);
-  
+
   return 0;
 }

@@ -50,6 +50,7 @@ read_file (const char *file_path, int *buf_size)
       return NULL;
     }
 
+  /* Set NULL terminator.  */
   buffer[file_stat.st_size] = '\0';
   *buf_size = file_stat.st_size + 1;
   fclose (file);
@@ -61,10 +62,10 @@ read_file (const char *file_path, int *buf_size)
 int
 setup_tcp_connection (const char *server_addr, int server_port)
 {
-  int sock;
+  int sock = socket (AF_INET, SOCK_STREAM, 0);
   struct sockaddr_in sin;
 
-  if ((sock = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+  if (sock < 0)
     {
       perror ("cannot create TCP socket");
       return -1;
@@ -99,7 +100,7 @@ send_tcp_packet (int sock, const char *buffer, int buffer_size)
       perror ("send () failed");
       return -1;
     }
-      
+
   return bytes_sent;
 }
 
@@ -126,25 +127,26 @@ receive_tcp_packet (int sock, char *buffer, int buffer_size)
 int
 setup_udp_socket (int port)
 {
-  int sock;
+  int sock = socket (AF_INET, SOCK_DGRAM, 0);
   int optval = 1;
+  int enable = IP_PMTUDISC_DO;
   struct sockaddr_in sin;
 
-  if ((sock = socket (AF_INET, SOCK_DGRAM, 0)) < 0)
+  if (sock < 0)
     {
       perror ("cannot create UDP socket");
       return -1;
     }
 
+  /* Set option to reuse the port.  */
   if (setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
     {
-      perror ("cannot reuse address");
+      perror ("cannot reuse port");
       close (sock);
       return -1;
     }
 
   /* Set Don't Fragment flag.  */
-  int enable = IP_PMTUDISC_DO;
   if (setsockopt (sock, IPPROTO_IP, IP_MTU_DISCOVER, &enable, sizeof (enable)) < 0)
     {
       perror ("setsockopt () failed");
@@ -172,9 +174,9 @@ setup_udp_socket (int port)
 int
 send_udp_packet (int sock, const char *buffer, int buffer_size, struct sockaddr_in *dst_addr)
 {
-  int bytes_sent;
+  int bytes_sent = sendto (sock, buffer, buffer_size, 0, (struct sockaddr *) dst_addr, sizeof (*dst_addr));
 
-  if ((bytes_sent = sendto (sock, buffer, buffer_size, 0, (struct sockaddr *) dst_addr, sizeof (*dst_addr))) < 0)
+  if (bytes_sent < 0)
     {
       perror ("sendto () failed");
       return -1;
@@ -271,9 +273,10 @@ main (int argc, char const *argv[])
       exit (EXIT_FAILURE);
     }
 
-  for (int train = 0; train < 2; train++)
+  for (int train_index = 0; train_index < 2; train_index++)
     {
-      if (train == 1)
+      /* Copy random bytes into the payload in the second train.  */
+      if (train_index == 1)
         {
           memcpy (udp_buf + sizeof (uint16_t), random_buf, config->udp_payload_size - sizeof (uint16_t));
         }
@@ -295,7 +298,7 @@ main (int argc, char const *argv[])
             }
         }
 
-      if (train == 0)
+      if (train_index == 0)
         {
           sleep (config->inter_measurement_time);
         }
