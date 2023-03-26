@@ -10,4 +10,4 @@ standalone: compdetect.c compdetect_config_parser.c
 		gcc -o compdetect compdetect.c compdetect_config_parser.c
 
 clean:
-		rm compdetect_server compdetect_client
+		rm compdetect_server compdetect_client compdetect

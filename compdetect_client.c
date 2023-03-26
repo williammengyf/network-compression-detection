@@ -143,6 +143,15 @@ setup_udp_socket (int port)
       return -1;
     }
 
+  /* Set Don't Fragment flag.  */
+  int enable = IP_PMTUDISC_DO;
+  if (setsockopt (sock, IPPROTO_IP, IP_MTU_DISCOVER, &enable, sizeof (enable)) < 0)
+    {
+      perror ("setsockopt () failed");
+      close (sock);
+      return -1;
+    }
+
   memset (&sin, 0, sizeof (sin));
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = INADDR_ANY;
@@ -225,16 +234,6 @@ main (int argc, char const *argv[])
   int udp_sock = setup_udp_socket (config->udp_src_port);
   if (udp_sock < 0)
     {
-      free (config);
-      exit (EXIT_FAILURE);
-    }
-
-  /* Set Don't Fragment flag.  */
-  int enable = IP_PMTUDISC_DO;
-  if (setsockopt (udp_sock, IPPROTO_IP, IP_MTU_DISCOVER, &enable, sizeof (enable)) < 0)
-    {
-      perror ("setsockopt () failed");
-      close (udp_sock);
       free (config);
       exit (EXIT_FAILURE);
     }
