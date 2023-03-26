@@ -18,7 +18,8 @@
 #include "compdetect_config_parser.h"
 
 #define DATAGRAM_SIZE 4096
-#define RECV_TIMEOUT 5
+#define OPT_SIZE 20
+#define RECV_TIMEOUT 10
 #define THRESHOLD 100
 
 /* Pseudo header needed for TCP header checksum calculation.  */
@@ -91,7 +92,7 @@ create_syn_packet (struct sockaddr_in *src, struct sockaddr_in *dst, int *packet
   iph->ihl = 5;
   iph->version = 4;
   iph->tos = 0;
-  iph->tot_len = sizeof (struct iphdr) + sizeof (struct tcphdr);
+  iph->tot_len = sizeof (struct iphdr) + sizeof (struct tcphdr) + OPT_SIZE;
   iph->id = htonl (rand () % 65535);
   iph->frag_off = 0;
   iph->ttl = 255;
@@ -120,9 +121,9 @@ create_syn_packet (struct sockaddr_in *src, struct sockaddr_in *dst, int *packet
   psh.dest_address = dst->sin_addr.s_addr;
   psh.placeholder = 0;
   psh.protocol = IPPROTO_TCP;
-  psh.tcp_size = htons (sizeof (struct tcphdr));
+  psh.tcp_size = htons (sizeof (struct tcphdr) + OPT_SIZE);
 
-  int psize = sizeof (struct pseudo_header) + sizeof (struct tcphdr);
+  int psize = sizeof (struct pseudo_header) + sizeof (struct tcphdr) + OPT_SIZE;
   char *pseudogram = malloc (psize);
   if (!pseudogram)
     {
@@ -131,7 +132,7 @@ create_syn_packet (struct sockaddr_in *src, struct sockaddr_in *dst, int *packet
     }
 
   memcpy (pseudogram, (char *) &psh, sizeof (struct pseudo_header));
-  memcpy (pseudogram + sizeof (struct pseudo_header), tcph, sizeof (struct tcphdr));
+  memcpy (pseudogram + sizeof (struct pseudo_header), tcph, sizeof (struct tcphdr) + OPT_SIZE);
 
   tcph->check = checksum (pseudogram, psize);
   iph->check = checksum (datagram, iph->tot_len);
@@ -232,7 +233,7 @@ receive_rst_packet (void *args)
   struct sockaddr_in recv_addr;
   socklen_t recv_addr_size = sizeof (recv_addr);
 
-  while (first_rst_time->tv_sec || second_rst_time->tv_sec)
+  while (!first_rst_time->tv_sec || !second_rst_time->tv_sec)
     {
       memset (buffer, 0, sizeof (buffer));
       int bytes_received = recvfrom (sock, buffer, sizeof (buffer), 0, (struct sockaddr *) &recv_addr, &recv_addr_size);
@@ -256,15 +257,13 @@ receive_rst_packet (void *args)
       if (iph->saddr == head_dst_addr->sin_addr.s_addr && iph->daddr == src_addr->sin_addr.s_addr
           && tcph->source == head_dst_addr->sin_port && tcph->dest == src_addr->sin_port && tcph->rst == 1)
         {
-          printf ("RST packet received from head\n");
           gettimeofday (first_rst_time, NULL);
           continue;
         }
 
       if (iph->saddr == tail_dst_addr->sin_addr.s_addr && iph->daddr == src_addr->sin_addr.s_addr
-          && tcph->source == head_dst_addr->sin_port && tcph->dest == src_addr->sin_port && tcph->rst == 1)
+          && tcph->source == tail_dst_addr->sin_port && tcph->dest == src_addr->sin_port && tcph->rst == 1)
         {
-          printf ("RST packet received from tail\n");
           gettimeofday (second_rst_time, NULL);
           continue;
         }
@@ -369,7 +368,7 @@ main(int argc, char const *argv[])
 
   struct sockaddr_in head_dst_addr;
   head_dst_addr.sin_family = AF_INET;
-  head_dst_addr.sin_port = config->tcp_head_syn_dest_port;
+  head_dst_addr.sin_port = htons (config->tcp_head_syn_dest_port);
   if (inet_pton (AF_INET, config->server_ip_addr, &head_dst_addr.sin_addr) != 1)
     {
       perror ("cannot configure head destination IP address");
@@ -379,7 +378,7 @@ main(int argc, char const *argv[])
 
   struct sockaddr_in tail_dst_addr;
   tail_dst_addr.sin_family = AF_INET;
-  tail_dst_addr.sin_port = config->tcp_tail_syn_dest_port;
+  tail_dst_addr.sin_port = htons (config->tcp_tail_syn_dest_port);
   if (inet_pton (AF_INET, config->server_ip_addr, &tail_dst_addr.sin_addr) != 1)
     {
       perror ("cannot configure tail destination IP address");
@@ -547,7 +546,7 @@ main(int argc, char const *argv[])
 
       pthread_join (receive_rst_thread, NULL);
       
-      if (thread_args.first_rst_time->tv_sec == 0 || thread_args.second_rst_time->tv_sec == 0)
+      if (!thread_args.first_rst_time->tv_sec || !thread_args.second_rst_time->tv_sec)
         {
           printf ("Failed to detect due to insufficient information.\n");
           close (raw_sock);
