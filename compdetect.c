@@ -494,6 +494,7 @@ main(int argc, char const *argv[])
           free (head_syn_packet);
           free (tail_syn_packet);
           free (random_buf);
+          free (udp_buf);
           free (thread_args.first_rst_time);
           free (thread_args.second_rst_time);
           exit (EXIT_FAILURE);
@@ -510,6 +511,7 @@ main(int argc, char const *argv[])
           free (head_syn_packet);
           free (tail_syn_packet);
           free (random_buf);
+          free (udp_buf);
           free (thread_args.first_rst_time);
           free (thread_args.second_rst_time);
           exit (EXIT_FAILURE);
@@ -536,6 +538,7 @@ main(int argc, char const *argv[])
               free (head_syn_packet);
               free (tail_syn_packet);
               free (random_buf);
+              free (udp_buf);
               free (thread_args.first_rst_time);
               free (thread_args.second_rst_time);
               exit (EXIT_FAILURE);
@@ -553,6 +556,7 @@ main(int argc, char const *argv[])
           free (head_syn_packet);
           free (tail_syn_packet);
           free (random_buf);
+          free (udp_buf);
           free (thread_args.first_rst_time);
           free (thread_args.second_rst_time);
           exit (EXIT_FAILURE);
@@ -575,6 +579,7 @@ main(int argc, char const *argv[])
           free (head_syn_packet);
           free (tail_syn_packet);
           free (random_buf);
+          free (udp_buf);
           free (thread_args.first_rst_time);
           free (thread_args.second_rst_time);
           exit (EXIT_FAILURE);
@@ -599,6 +604,7 @@ main(int argc, char const *argv[])
   free (head_syn_packet);
   free (tail_syn_packet);
   free (random_buf);
+  free (udp_buf);
   free (thread_args.first_rst_time);
   free (thread_args.second_rst_time);
 
