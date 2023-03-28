@@ -386,6 +386,7 @@ main(int argc, char const *argv[])
   if (inet_pton (AF_INET, config->server_ip_addr, &head_dst_addr.sin_addr) != 1)
     {
       perror ("cannot configure head destination IP address");
+      close (raw_sock);
       free (config);
       exit (EXIT_FAILURE);
     }
@@ -396,6 +397,7 @@ main(int argc, char const *argv[])
   if (inet_pton (AF_INET, config->server_ip_addr, &tail_dst_addr.sin_addr) != 1)
     {
       perror ("cannot configure tail destination IP address");
+      close (raw_sock);
       free (config);
       exit (EXIT_FAILURE);
     }
@@ -406,6 +408,7 @@ main(int argc, char const *argv[])
   if (inet_pton (AF_INET, config->standalone_ip_addr, &src_addr.sin_addr) != 1)
     {
       perror ("cannot configure source IP address");
+      close (raw_sock);
       free (config);
       exit (EXIT_FAILURE);
     }

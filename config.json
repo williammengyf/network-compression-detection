@@ -1,6 +1,6 @@
 {
   "server_ip_addr": "192.168.86.248",
-  "standalone_ip_addr": "192.168.86.248",
+  "standalone_ip_addr": "192.168.86.250",
   "udp_src_port": 9876,
   "udp_dest_port": 8765,
   "tcp_head_syn_dest_port": 7654,

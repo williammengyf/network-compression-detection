@@ -59,5 +59,5 @@ make
 ./compdetect_client config.json
 
 # run the standalone application
-./compdetect
+sudo ./compdetect config.json
 ```
